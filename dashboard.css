@@ -1249,6 +1249,82 @@ body {
     color: #4a5568;
 }
 
+/* AI Forecasting Styles */
+.ai-forecasting .prediction-ui {
+    display: flex;
+    gap: 18px;
+    align-items: stretch;
+    padding: 12px 6px;
+}
+
+.ai-forecasting .prediction-left {
+    width: 360px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ai-forecasting .prediction-right {
+    flex: 1;
+    min-width: 320px;
+    height: 260px;
+}
+
+.upload-section {
+    background: var(--card-bg, #f8fafc);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px dashed rgba(0,0,0,0.06);
+}
+
+.upload-label {
+    display: inline-block;
+    padding: 8px 10px;
+    background: #eef2ff;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    color: #4C51BF;
+    margin-bottom: 8px;
+}
+
+#csvFile {
+    display: block;
+    margin-top: 6px;
+    width: 100%;
+}
+
+.upload-helpers {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 8px;
+}
+
+.upload-helpers a { color: #4C51BF; text-decoration: none; font-size: 0.9rem; }
+.upload-helpers .action-btn { padding: 6px 10px; font-size: 0.85rem; }
+
+.format-hint { font-size: 0.85rem; color: #6B7280; margin-top: 6px; }
+
+.prediction-controls { display: flex; flex-direction: column; gap: 8px; }
+.prediction-controls label { font-size: 0.85rem; color: #374151; }
+.prediction-controls select, .prediction-controls input { padding: 6px 8px; border-radius: 6px; border: 1px solid #E5E7EB; }
+
+.predict-actions { display: flex; gap: 8px; margin-top: 6px; }
+.predict-btn { background: #4C51BF; color: white; padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; }
+.predict-btn:hover { background: #3b43a7; }
+
+.prediction-insights { background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #E6EEF8; }
+.prediction-insights ul { list-style: none; margin: 0; padding: 0; }
+.prediction-insights li { display: flex; gap: 8px; align-items: center; padding: 6px 0; color: #374151; font-size: 0.9rem; }
+
+.prediction-chart { width: 100%; height: 100%; min-height: 220px; }
+@media (max-width: 980px) {
+    .ai-forecasting .prediction-ui { flex-direction: column; }
+    .ai-forecasting .prediction-left { width: 100%; }
+    .ai-forecasting .prediction-right { min-height: 260px; height: 260px; }
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .dashboard-grid {

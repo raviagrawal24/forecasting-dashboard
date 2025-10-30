@@ -270,25 +270,56 @@
                     <div class="card-header">
                         <h3><i class="fas fa-brain"></i> AI Stock Predictions</h3>
                         <div class="card-actions">
-                            <button onclick="refreshPredictions()" class="refresh-btn">
+                            <button onclick="refreshPredictions()" class="refresh-btn" title="Refresh">
                                 <i class="fas fa-sync-alt"></i>
                             </button>
                         </div>
                     </div>
-                    <div class="card-content">
-                        <div class="prediction-tabs">
-                            <button class="tab-btn active" data-period="weekly">Weekly</button>
-                            <button class="tab-btn" data-period="monthly">Monthly</button>
-                        </div>
-                        <div class="prediction-content">
-                            <div class="prediction-chart">
-                                <canvas id="predictionChart"></canvas>
+                    <div class="card-content prediction-ui">
+                        <div class="prediction-left">
+                            <div class="upload-section">
+                                <label for="csvFile" class="upload-label">
+                                    <i class="fas fa-file-upload"></i> Upload sales/inventory CSV
+                                </label>
+                                <input type="file" id="csvFile" accept=".csv" />
+                                <div class="upload-helpers">
+                                    <a href="#" id="downloadSample">Download sample CSV</a>
+                                    <button type="button" class="action-btn" onclick="useSampleData()">Use sample data</button>
+                                </div>
+                                <div class="format-hint">
+                                    <strong>Expected columns:</strong> date (YYYY-MM-DD), item (optional), sold/quantity
+                                </div>
                             </div>
+
+                            <div class="prediction-controls">
+                                <label for="aggregation">Aggregation</label>
+                                <select id="aggregation">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                </select>
+
+                                <label for="smoothing">Smoothing (days)</label>
+                                <input id="smoothing" type="number" min="0" max="30" value="3" />
+
+                                <div class="predict-actions">
+                                    <button class="predict-btn" id="predict7Btn" onclick="predictNext7DaysFrontend()">
+                                        <i class="fas fa-bolt"></i> Predict Next 7 Days
+                                    </button>
+                                    <button class="predict-btn" id="clearCsvBtn" onclick="clearUploadedData()">Clear Data</button>
+                                </div>
+                            </div>
+
                             <div class="prediction-insights">
                                 <h4>Key Insights</h4>
                                 <ul id="predictionInsights">
-                                    <!-- Insights will be populated by JavaScript -->
+                                    <!-- Insights populated by JS -->
                                 </ul>
+                            </div>
+                        </div>
+
+                        <div class="prediction-right">
+                            <div class="prediction-chart">
+                                <canvas id="predictionChart"></canvas>
                             </div>
                         </div>
                     </div>

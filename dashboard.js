@@ -17,6 +17,10 @@ let isPasswordVisible = false;
 let currentTheme = 'light';
 let predictionChart = null;
 
+// Prediction / CSV Upload state
+let salesData = []; // [{date: Date, value: Number}]
+let uploadedFilename = null;
+
 // Sample Data
 const sampleStockData = [
     { id: 1, name: "Laptop Computers", category: "electronics", quantity: 45, threshold: 10, status: "in-stock" },
@@ -975,36 +979,254 @@ function updatePredictionChart(predictions) {
     });
 }
 
-function updatePredictionInsights(predictions) {
+// CSV Handling and Prediction Functions
+// Simple CSV parser (lightweight)
+function parseCSV(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+    if (lines.length === 0) return [];
+    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const rows = lines.slice(1).map(line => {
+        const cols = line.split(',').map(c => c.trim());
+        const obj = {};
+        header.forEach((h, i) => obj[h] = cols[i] ?? '');
+        return obj;
+    });
+    return rows;
+}
+
+function setupPredictionUI() {
+    const fileInput = document.getElementById('csvFile');
+    const downloadSample = document.getElementById('downloadSample');
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            uploadedFilename = file.name;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const rows = parseCSV(ev.target.result);
+                    salesData = normalizeRowsToDaily(rows);
+                    updatePredictionChartFromData(salesData, []);
+                    showNotification(`Loaded ${salesData.length} days from ${uploadedFilename}`, 'success');
+                } catch (err) {
+                    showNotification('Failed to parse CSV', 'error');
+                }
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    if (downloadSample) {
+        downloadSample.addEventListener('click', (e) => {
+            e.preventDefault();
+            const sample = "date,item,quantity\n2025-10-01,Widget A,12\n2025-10-02,Widget A,9\n2025-10-03,Widget A,15\n2025-10-04,Widget A,11\n2025-10-05,Widget A,14\n2025-10-06,Widget A,10";
+            const blob = new Blob([sample], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sample-sales.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    }
+}
+
+// Convert parsed rows to daily aggregated series [{date: Date, value: Number}]
+function normalizeRowsToDaily(rows) {
+    // Accept flexible headers: date, sold, quantity, value
+    const map = new Map(); // key = yyyy-mm-dd, value = sum
+    rows.forEach(r => {
+        const dateStr = r.date || r.dt || r.day;
+        if (!dateStr) return;
+        const date = new Date(dateStr);
+        if (isNaN(date)) return;
+        const key = date.toISOString().slice(0, 10);
+        // find value field
+        const v = Number(r.sold ?? r.quantity ?? r.value ?? r.qty ?? 0) || 0;
+        map.set(key, (map.get(key) || 0) + v);
+    });
+    const arr = Array.from(map.entries()).map(([d, v]) => ({ date: new Date(d), value: v }));
+    // sort ascending
+    arr.sort((a, b) => a.date - b.date);
+    return arr;
+}
+
+// Predict next 7 days using linear trend + moving average smoothing
+function predictNext7DaysFrontend() {
+    if (!salesData || salesData.length < 3) {
+        showNotification('Please upload at least 3 days of data (or use sample)', 'error');
+        return;
+    }
+    const smoothingDays = Math.max(0, Number(document.getElementById('smoothing')?.value || 3));
+    const aggregated = salesData.slice(); // already daily
+    const predictions = generate7DayPrediction(aggregated, smoothingDays);
+    updatePredictionChartFromData(aggregated, predictions);
+    updatePredictionInsightsFromPrediction(aggregated, predictions);
+    showNotification('7-day prediction complete', 'success');
+}
+
+// Clear uploaded data
+function clearUploadedData() {
+    salesData = [];
+    uploadedFilename = null;
+    if (predictionChart) {
+        predictionChart.destroy();
+        predictionChart = null;
+    }
+    document.getElementById('csvFile').value = '';
+    document.getElementById('predictionInsights').innerHTML = '';
+    showNotification('Uploaded data cleared', 'info');
+}
+
+// Generate predictions: returns array [{date: Date, value: Number, confidence: Number}]
+function generate7DayPrediction(series, smoothingDays = 3) {
+    // Convert to values and days index
+    const values = series.map(s => s.value);
+    const n = values.length;
+    const x = Array.from({ length: n }, (_, i) => i + 1);
+
+    // Linear regression slope & intercept
+    const sumX = x.reduce((a, b) => a + b, 0);
+    const sumY = values.reduce((a, b) => a + b, 0);
+    const sumXY = x.reduce((a, b, i) => a + b * values[i], 0);
+    const sumXX = x.reduce((a, b) => a + b * b, 0);
+    const denom = (n * sumXX - sumX * sumX) || 1;
+    const slope = (n * sumXY - sumX * sumY) / denom;
+    const intercept = (sumY - slope * sumX) / n;
+
+    // smoothing: simple moving average of last smoothingDays
+    let lastValue = values[n - 1];
+    if (smoothingDays > 1 && n >= smoothingDays) {
+        const window = values.slice(n - smoothingDays);
+        lastValue = window.reduce((a, b) => a + b, 0) / window.length;
+    }
+
+    // residuals to compute confidence
+    const predsFit = x.map(xi => intercept + slope * xi);
+    const residuals = values.map((v, i) => v - predsFit[i]);
+    const variance = residuals.reduce((a, b) => a + b * b, 0) / Math.max(1, n - 1);
+    const stdev = Math.sqrt(variance);
+
+    // produce next 7 days
+    const out = [];
+    for (let i = 1; i <= 7; i++) {
+        const dayIndex = n + i;
+        // base predicted by linear trend
+        let pred = intercept + slope * dayIndex;
+        // blend with lastValue to reduce extreme jumps
+        pred = pred * 0.6 + lastValue * 0.4;
+        pred = Math.max(0, pred);
+        // compute confidence from stdev relative to mean
+        const mean = Math.max(1, Math.abs(sumY / n));
+        const conf = Math.max(10, Math.min(99, 100 - (stdev / mean) * 100)); // 10-99
+        const date = new Date(series[n - 1].date);
+        date.setDate(date.getDate() + i);
+        out.push({ date, value: Number(pred.toFixed(2)), confidence: Number(conf.toFixed(1)) });
+    }
+    return out;
+}
+
+// Update chart: show historical + predicted
+function updatePredictionChartFromData(historical, predicted) {
+    const ctx = document.getElementById('predictionChart').getContext('2d');
+    const histLabels = historical.map(h => h.date.toISOString().slice(0, 10));
+    const histValues = historical.map(h => h.value);
+    const predLabels = predicted.map(p => p.date.toISOString().slice(0, 10));
+    const predValues = predicted.map(p => p.value);
+
+    if (predictionChart) predictionChart.destroy();
+
+    predictionChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [...histLabels, ...predLabels],
+            datasets: [
+                {
+                    label: 'Historical',
+                    data: [...histValues, ...Array(predValues.length).fill(null)],
+                    borderColor: '#4C51BF',
+                    backgroundColor: 'rgba(76,81,191,0.08)',
+                    fill: true,
+                    tension: 0.2,
+                    pointRadius: 3
+                },
+                {
+                    label: 'Predicted (7d)',
+                    data: [...Array(histValues.length).fill(null), ...predValues],
+                    borderColor: '#ED8936',
+                    backgroundColor: 'rgba(237,137,54,0.06)',
+                    borderDash: [6, 4],
+                    fill: true,
+                    tension: 0.2,
+                    pointRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            interaction: { mode: 'nearest', intersect: false },
+            scales: {
+                x: {
+                    ticks: { color: currentTheme === 'dark' ? '#E2E8F0' : '#2D3748' }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: currentTheme === 'dark' ? '#E2E8F0' : '#2D3748' }
+                }
+            }
+        }
+    });
+}
+
+// Populate insights
+function updatePredictionInsightsFromPrediction(historical, predicted) {
     const insights = document.getElementById('predictionInsights');
-    const avgConfidence = predictions.confidence.reduce((a, b) => a + b, 0) / predictions.confidence.length;
-    const trend = predictions.predicted[predictions.predicted.length - 1] > predictions.predicted[0] ? 'upward' : 'downward';
-    
+    const lastHist = historical[historical.length - 1];
+    const avgPred = predicted.reduce((a, b) => a + b.value, 0) / predicted.length;
+    const totalNext7 = predicted.reduce((a, b) => a + b.value, 0);
+    const direction = avgPred > lastHist.value ? 'upward' : (avgPred < lastHist.value ? 'downward' : 'flat');
+    const avgConfidence = predicted.reduce((a, b) => a + b.confidence, 0) / predicted.length;
+
+    const lowAlerts = predicted.filter(p => p.value < 5).length; // example threshold
     insights.innerHTML = `
-        <li><i class="fas fa-chart-line"></i> ${trend.charAt(0).toUpperCase() + trend.slice(1)} trend detected</li>
-        <li><i class="fas fa-percentage"></i> Average confidence: ${avgConfidence.toFixed(1)}%</li>
-        <li><i class="fas fa-exclamation-triangle"></i> Potential stock alerts: ${getPotentialAlerts(predictions)}</li>
+        <li><i class="fas fa-chart-line"></i> Trend: ${direction}</li>
+        <li><i class="fas fa-percentage"></i> Avg confidence: ${avgConfidence.toFixed(1)}%</li>
+        <li><i class="fas fa-calendar-day"></i> Expected total (next 7 days): ${Math.round(totalNext7)}</li>
+        <li><i class="fas fa-bell"></i> Low forecast alerts: ${lowAlerts > 0 ? lowAlerts + ' day(s)' : 'None'}</li>
     `;
 }
 
-function getPotentialAlerts(predictions) {
-    const lowStockThreshold = 20;
-    const alertDays = predictions.predicted.filter(val => val < lowStockThreshold).length;
-    return alertDays > 0 ? `${alertDays} days may require attention` : 'None detected';
+// Convenience: use built-in sample data (aggregated from sample stockData)
+function useSampleData() {
+    // create a small synthetic sales series from stockData quantities over recent dates
+    const today = new Date();
+    const rows = [];
+    for (let i = 7; i >= 1; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const val = Math.max(5, Math.round(Math.random() * 30));
+        rows.push({ date: d, value: val });
+    }
+    salesData = rows;
+    updatePredictionChartFromData(salesData, []);
+    showNotification('Sample data loaded', 'success');
 }
 
-function refreshPredictions() {
-    const activeTab = document.querySelector('.tab-btn.active');
-    updatePredictions(activeTab.dataset.period);
-    showNotification('Predictions refreshed', 'success');
-}
-
-// Add this to your DOMContentLoaded event listener
+// Initialize prediction UI on DOM ready (call this from your existing DOMContentLoaded setup)
 document.addEventListener('DOMContentLoaded', function() {
     // ...existing code...
-    initializePredictions();
+    try { setupPredictionUI(); } catch (e) { /* ignore in older builds */ }
 });
-
 
 // Activity Log Functions
 function loadActivityLog() {
