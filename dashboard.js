@@ -70,6 +70,144 @@ document.addEventListener('DOMContentLoaded', function() {
     // Firebase removed: no auth or realtime listeners here
 });
 
+/*
+  Login / Role UI bindings and handlers
+  - selectRole() shows the proper login form
+  - goBackToRoles() returns to role selection
+  - togglePassword() toggles visibility
+  - generateSecurityCode() refreshes 4-digit code
+  - handleAuthSubmit() validates and creates a session
+*/
+
+function selectRole(role) {
+    currentRole = role;
+    const roleSelection = document.getElementById('roleSelection');
+    const loginForm = document.getElementById('loginForm');
+    if (roleSelection) roleSelection.style.display = 'none';
+    if (loginForm) loginForm.style.display = 'block';
+    const title = document.getElementById('loginTitle');
+    const subtitle = document.getElementById('loginSubtitle');
+    if (title) title.textContent = role === 'manager' ? 'Manager Login' : 'Warehouse Staff Login';
+    if (subtitle) subtitle.textContent = role === 'manager' ? 'Enter your credentials to continue' : 'Enter staff credentials';
+    generateSecurityCode();
+    // focus username
+    setTimeout(() => document.getElementById('username')?.focus(), 100);
+}
+
+function goBackToRoles() {
+    currentRole = null;
+    const roleSelection = document.getElementById('roleSelection');
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) loginForm.style.display = 'none';
+    if (roleSelection) roleSelection.style.display = 'flex';
+    // reset form fields & attempts
+    const form = document.getElementById('authForm');
+    if (form) form.reset();
+    loginAttempts = 0;
+}
+
+function togglePassword() {
+    const pwd = document.getElementById('password');
+    const btn = event?.currentTarget || null;
+    isPasswordVisible = !isPasswordVisible;
+    if (pwd) pwd.type = isPasswordVisible ? 'text' : 'password';
+    // toggle icon if button exists
+    try {
+        const icon = btn?.querySelector('i');
+        if (icon) icon.className = isPasswordVisible ? 'fas fa-eye-slash' : 'fas fa-eye';
+    } catch (e) { /* ignore */ }
+}
+
+function generateSecurityCode() {
+    securityCode = String(Math.floor(1000 + Math.random() * 9000));
+    const display = document.getElementById('securityCodeDisplay');
+    if (display) display.textContent = securityCode;
+}
+
+/* Basic notification helper (reuse your existing showNotification if present) */
+function showNotification(message, type = 'info') {
+    if (typeof window.showNotification === 'function') {
+        window.showNotification(message, type);
+        return;
+    }
+    console[type === 'error' ? 'error' : 'log']('[notify]', message);
+}
+
+async function handleAuthSubmit(e) {
+    e.preventDefault();
+    const username = document.getElementById('username')?.value?.trim() || '';
+    const password = document.getElementById('password')?.value || '';
+    const enteredCode = document.getElementById('securityCode')?.value?.trim() || '';
+
+    if (!currentRole) {
+        showNotification('Please select a role first', 'error');
+        return;
+    }
+
+    if (!username || !password) {
+        showNotification('Enter username and password', 'error');
+        return;
+    }
+
+    if (!securityCode) generateSecurityCode();
+    if (enteredCode !== String(securityCode)) {
+        loginAttempts++;
+        showNotification('Invalid security code', 'error');
+        if (loginAttempts >= maxLoginAttempts) {
+            showNotification('Too many failed attempts — returning to role selection', 'error');
+            goBackToRoles();
+        }
+        return;
+    }
+
+    // Basic mocked authentication: accept any non-empty credentials.
+    // Replace with real auth call as needed.
+    currentUser = { username, role: currentRole };
+    sessionStartTime = Date.now();
+    // create session object for persistence
+    const session = {
+        user: currentUser,
+        role: currentRole,
+        startTime: sessionStartTime,
+        expires: Date.now() + sessionTimeout
+    };
+    try {
+        localStorage.setItem('inventorySession', JSON.stringify(session));
+    } catch (e) { /* ignore storage errors */ }
+
+    // show dashboard and start timer (assume these exist in your app)
+    if (typeof showDashboard === 'function') showDashboard();
+    if (typeof startSessionTimer === 'function') startSessionTimer();
+    showNotification('Login successful', 'success');
+}
+
+/* Bind handlers on DOM ready (safe id checks) */
+document.addEventListener('DOMContentLoaded', function() {
+    // existing initialization... (keeps prior code)
+    try {
+        // bind role buttons already inline via onclick in HTML; ensure form handler is bound
+        const authForm = document.getElementById('authForm');
+        if (authForm) {
+            authForm.removeEventListener('submit', handleAuthSubmit); // avoid double-bind
+            authForm.addEventListener('submit', handleAuthSubmit);
+        }
+
+        // bind password toggle buttons (button has inline onclick but ensure fallback)
+        const pwdToggle = document.querySelector('.password-toggle');
+        if (pwdToggle) {
+            pwdToggle.removeEventListener('click', togglePassword);
+            pwdToggle.addEventListener('click', togglePassword);
+        }
+
+        // generate initial code if login form visible
+        if (document.getElementById('loginForm')?.style.display === 'block') {
+            generateSecurityCode();
+        }
+    } catch (e) {
+        console.warn('Login bindings init failed', e);
+    }
+});
+
 // Enhanced Login Functions
 function selectRole(role) {
     currentRole = role;
