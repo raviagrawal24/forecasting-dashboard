@@ -43,4 +43,16 @@ A modern web-based forecasting dashboard application that provides data visualiz
 Feel free to submit issues and enhancement requests.
 
 
+
+## LOGIN CREDENTIALS.
+
+WAREHOUSE CREDENTIALS
+  --Username = warehouse
+  --Password = warehouse123 
+
+MANAGER CREDENTIALS
+  --Username = manager
+  --Password = manager123   
+
+
 Created with ❤️ for HACK X 3
