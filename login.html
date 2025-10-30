@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Management System</title>
+    <link rel="stylesheet" href="dashboard.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="logo-container">
+                    <i class="fas fa-warehouse"></i>
+                    <div class="logo-text">
+                        <h1>Inventory Management </h1>
+                        <span class="tagline">Smart Inventory Management</span>
+                    </div>
+                </div>
+                <p>Secure Access Portal</p>
+            </div>
+            
+            <!-- Role Selection -->
+            <div id="roleSelection" class="role-selection">
+                <div class="role-card" onclick="selectRole('manager')">
+                    <div class="role-icon">
+                        <i class="fas fa-user-tie"></i>
+                    </div>
+                    <h3>Manager</h3>
+                    <p>Full system access</p>
+                    <div class="role-features">
+                        <span>• Analytics & Reports</span>
+                        <span>• User Management</span>
+                        <span>• System Settings</span>
+                    </div>
+                </div>
+                <div class="role-card" onclick="selectRole('warehouse')">
+                    <div class="role-icon">
+                        <i class="fas fa-boxes"></i>
+                    </div>
+                    <h3>Warehouse Staff</h3>
+                    <p>Inventory operations</p>
+                    <div class="role-features">
+                        <span>• Stock Management</span>
+                        <span>• Order Processing</span>
+                        <span>• Activity Logging</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Login Form -->
+            <div id="loginForm" class="login-form" style="display: none;">
+                <div class="form-header">
+                    <h2 id="loginTitle">Manager Login</h2>
+                    <p id="loginSubtitle">Enter your credentials to continue</p>
+                </div>
+                
+                <form id="authForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <div class="input-group">
+                            <i class="fas fa-user"></i>
+                            <input type="text" id="username" placeholder="Enter your username" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-group">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="password" placeholder="Enter your password" required>
+                            <button type="button" class="password-toggle" onclick="togglePassword()">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="securityCode">Security Code</label>
+                        <div class="input-group">
+                            <i class="fas fa-shield-alt"></i>
+                            <input type="text" id="securityCode" placeholder="Enter security code" required>
+                        </div>
+                        <div class="security-hint">
+                            <i class="fas fa-info-circle"></i>
+                            <span>Enter the 4-digit code displayed below</span>
+                        </div>
+                    </div>
+                    
+                    <div class="security-code-display">
+                        <span id="securityCodeDisplay">1234</span>
+                        <button type="button" class="refresh-code" onclick="generateSecurityCode()">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="form-options">
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="rememberMe">
+                            <span class="checkmark"></span>
+                            Remember me
+                        </label>
+                        <a href="#" class="forgot-password">Forgot Password?</a>
+                    </div>
+                    
+                    <button type="submit" class="login-btn">
+                        <i class="fas fa-sign-in-alt"></i>
+                        <span>Secure Login</span>
+                        <div class="loading-spinner" style="display: none;"></div>
+                    </button>
+                    
+                    <button type="button" class="back-btn" onclick="goBackToRoles()">
+                        <i class="fas fa-arrow-left"></i>
+                        Back to Roles
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Security Features -->
+        <div class="security-features">
+            <div class="security-item">
+                <i class="fas fa-shield-alt"></i>
+                <span>256-bit SSL Encryption</span>
+            </div>
+            <div class="security-item">
+                <i class="fas fa-user-shield"></i>
+                <span>Multi-Factor Authentication</span>
+            </div>
+            <div class="security-item">
+                <i class="fas fa-clock"></i>
+                <span>Session Timeout Protection</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" class="dashboard" style="display: none;">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-left">
+                <i class="fas fa-warehouse"></i>
+                <div class="header-title">
+                    <h1>Inventory Dashboard</h1>
+                    <span class="session-info">
+                        <i class="fas fa-clock"></i>
+                        Session: <span id="sessionTime">00:00</span>
+                    </span>
+                </div>
+            </div>
+            <div class="header-right">
+                <!-- Theme Switcher -->
+                <div class="theme-switcher">
+                    <button class="theme-btn" id="themeToggle" onclick="toggleTheme()">
+                        <i class="fas fa-sun" id="themeIcon"></i>
+                    </button>
+                </div>
+                
+                <div class="user-profile">
+                    <div class="user-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <div class="user-details">
+                        <span class="user-name" id="userName">Loading...</span>
+                        <span class="user-role" id="userRole">Loading...</span>
+                        <div class="user-status">
+                            <div class="status-indicator online"></div>
+                            <span>Online</span>
+                        </div>
+                    </div>
+                    <div class="user-menu">
+                        <button class="menu-btn" onclick="toggleUserMenu()">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="user-dropdown" id="userDropdown">
+                            <a href="#" onclick="viewProfile()">
+                                <i class="fas fa-user"></i> Profile
+                            </a>
+                            <a href="#" onclick="viewActivity()">
+                                <i class="fas fa-history"></i> My Activity
+                            </a>
+                            <a href="#" onclick="changePassword()">
+                                <i class="fas fa-key"></i> Change Password
+                            </a>
+                            <hr>
+                            <a href="#" onclick="logout()" class="logout-link">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="dashboard-main">
+            <!-- Stats Cards -->
+            <section class="stats-section">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-boxes"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Stock</h3>
+                        <p class="stat-number" id="totalStock">1,247</p>
+                        <span class="stat-change positive">+12%</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-shipping-fast"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Orders Today</h3>
+                        <p class="stat-number" id="ordersToday">23</p>
+                        <span class="stat-change positive">+8%</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Low Stock Items</h3>
+                        <p class="stat-number" id="lowStock">7</p>
+                        <span class="stat-change negative">-2%</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Value</h3>
+                        <p class="stat-number" id="totalValue">$45,678</p>
+                        <span class="stat-change positive">+15%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Main Dashboard Grid -->
+            <div class="dashboard-grid">
+                <!-- Live Stock Status -->
+                <div class="dashboard-card stock-status">
+                    <div class="card-header">
+                        <h2><i class="fas fa-chart-bar"></i> Live Stock Status</h2>
+                        <div class="card-actions">
+                            <div class="chart-view-toggle">
+                                <button class="view-btn active" data-view="list" onclick="switchStockView('list')" title="List View">
+                                    <i class="fas fa-list"></i>
+                                </button>
+                                <button class="view-btn" data-view="pie" onclick="switchStockView('pie')" title="Pie Chart">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                                <button class="view-btn" data-view="bar" onclick="switchStockView('bar')" title="Bar Chart">
+                                    <i class="fas fa-chart-bar"></i>
+                                </button>
+                            </div>
+                            <button class="refresh-btn" onclick="refreshStockStatus()">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="stock-items" id="stockItems">
+                            <!-- Stock items will be dynamically loaded -->
+                        </div>
+                        <div class="stock-chart-container" id="stockChartContainer" style="display: none;">
+                            <canvas id="stockChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Stock Entry -->
+                <div class="dashboard-card ai-forecasting">
+                    <div class="card-header">
+                        <h2><i class="fas fa-brain"></i> AI Demand Forecasting</h2>
+                    </div>
+                    <div class="card-content">
+                        <p>
+                            Utilize our AI-powered demand forecasting model to predict future stock levels and optimize your supply chain decisions.
+                        </p>
+                        <button class="ai-forecast-btn" onclick="showAIPrediction()">Show Demand Forecast</button>
+                        <div id="aiPredictionResult" style="margin-top:15px;"></div>
+                    </div>
+                </div>
+
+                <!-- Order History Chart -->
+                <div class="dashboard-card chart-container">
+                    <div class="card-header">
+                        <h2><i class="fas fa-chart-line"></i> Order & Supply Trends</h2>
+                        <div class="chart-controls">
+                            <select id="chartPeriod" onchange="updateChart()">
+                                <option value="7">Last 7 days</option>
+                                <option value="30" selected>Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <canvas id="orderChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Recent Activity Log -->
+                <div class="dashboard-card activity-log">
+                    <div class="card-header">
+                        <h2><i class="fas fa-history"></i> Recent Activity</h2>
+                        <div class="card-actions">
+                            <button class="clear-btn" onclick="clearActivityLog()">Clear</button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="activity-list" id="activityList">
+                            <!-- Activity items will be dynamically loaded -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="dashboard-card quick-actions">
+                    <div class="card-header">
+                        <h2><i class="fas fa-bolt"></i> Quick Actions</h2>
+                    </div>
+                    <div class="card-content">
+                        <div class="action-buttons">
+                            <button class="action-btn" onclick="quickAddStock()">
+                                <i class="fas fa-plus"></i>
+                                <span>Quick Add</span>
+                            </button>
+                            <button class="action-btn" onclick="generateReport()">
+                                <i class="fas fa-file-alt"></i>
+                                <span>Generate Report</span>
+                            </button>
+                            <button class="action-btn" onclick="exportData()">
+                                <i class="fas fa-download"></i>
+                                <span>Export Data</span>
+                            </button>
+                            <button class="action-btn" onclick="viewAlerts()">
+                                <i class="fas fa-bell"></i>
+                                <span>View Alerts</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Inventory Overview -->
+                <div class="dashboard-card inventory-overview">
+                    <div class="card-header">
+                        <h2><i class="fas fa-clipboard-list"></i> Inventory Overview</h2>
+                    </div>
+                    <div class="card-content">
+                        <div class="inventory-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Category</th>
+                                        <th>Stock</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inventoryTableBody">
+                                    <!-- Table rows will be dynamically loaded -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Quick Actions -->
+    <div id="modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
