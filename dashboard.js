@@ -1120,6 +1120,178 @@ function updatePredictionChart(predictions) {
     });
 }
 
+/*
+  Added: CSV->daily normalizer, simple 7-day predictor, chart + insights updater
+  These work with existing functions: predictNext7DaysFrontend, clientSidePredict,
+  uploadAndForecastBackend, setupPredictionUI, parseCSV (all in this file).
+*/
+
+function normalizeRowsToDaily(rows) {
+    // rows: [{date: 'YYYY-MM-DD', quantity: '12', ...}, ...]
+    const parsed = rows.map(r => {
+        const dateRaw = r.date ?? r.ds ?? r.day ?? Object.values(r)[0];
+        const date = new Date(dateRaw);
+        // find numeric column
+        const numericKeys = ['y','value','quantity','qty','sold','sales'];
+        let value = null;
+        for (const k of numericKeys) {
+            if (r[k] !== undefined && r[k] !== '') { value = Number(r[k]); break; }
+        }
+        if (value === null) {
+            for (const k in r) {
+                if (r[k] !== '' && !isNaN(Number(r[k]))) { value = Number(r[k]); break; }
+            }
+        }
+        return { date, value: isNaN(value) ? 0 : value };
+    }).filter(x => x.date && x.date.toString() !== 'Invalid Date');
+
+    // aggregate by day
+    const map = {};
+    parsed.forEach(p => {
+        const key = p.date.toISOString().slice(0,10);
+        map[key] = (map[key] || 0) + (p.value || 0);
+    });
+
+    return Object.keys(map).sort().map(k => ({ date: new Date(k), value: map[k] }));
+}
+
+function generate7DayPrediction(historical, smoothingDays = 3) {
+    // Simple iterative moving-average predictor with light noise + bounds
+    const hist = (historical || []).map(h => ({ date: new Date(h.date), value: Number(h.value || h.y || 0) }))
+                     .sort((a,b) => a.date - b.date);
+    const buffer = hist.map(h => h.value);
+    const lastDate = hist.length ? new Date(hist[hist.length - 1].date) : new Date();
+    const preds = [];
+
+    for (let i = 1; i <= 7; i++) {
+        const start = Math.max(0, buffer.length - Math.max(1, smoothingDays));
+        const window = buffer.slice(start);
+        const avg = window.reduce((s,v) => s + v, 0) / Math.max(1, window.length);
+        const noise = (Math.random() - 0.5) * avg * 0.08; // ~±8%
+        const value = Math.max(0, avg + noise);
+        const predDate = new Date(lastDate);
+        predDate.setDate(predDate.getDate() + i);
+        preds.push({
+            date: predDate,
+            value: Number(value.toFixed(2)),
+            lower: Number((value * 0.9).toFixed(2)),
+            upper: Number((value * 1.1).toFixed(2)),
+            confidence: Math.round(70 + Math.random() * 25)
+        });
+        buffer.push(value);
+    }
+
+    return preds;
+}
+
+function updatePredictionChartFromData(historical, predicted) {
+    const ctx = document.getElementById('predictionChart')?.getContext('2d');
+    if (!ctx) return;
+
+    // Build combined label axis
+    const histLabels = (historical || []).map(h => new Date(h.date));
+    const predLabels = (predicted || []).map(p => new Date(p.date));
+    const allLabels = [...histLabels, ...predLabels].map(d => d.toLocaleDateString());
+
+    // Series aligned to allLabels
+    const histSeries = [...(historical || []).map(h => Number(h.value)), ...new Array(predLabels.length).fill(null)];
+    const predSeries = [...new Array(histLabels.length).fill(null), ...(predicted || []).map(p => Number(p.value))];
+
+    if (predictionChart) predictionChart.destroy();
+    predictionChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: allLabels,
+            datasets: [
+                {
+                    label: 'Historical',
+                    data: histSeries,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102,126,234,0.08)',
+                    tension: 0.3,
+                    fill: true,
+                    spanGaps: true
+                },
+                {
+                    label: 'Predicted (7d)',
+                    data: predSeries,
+                    borderColor: '#48bb78',
+                    backgroundColor: 'rgba(72,187,120,0.08)',
+                    borderDash: [6,4],
+                    tension: 0.3,
+                    fill: false,
+                    spanGaps: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+function updatePredictionInsightsFromPrediction(historical, predicted) {
+    const container = document.getElementById('predictionInsights');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const avgHist = (historical && historical.length) ? (historical.reduce((s,h) => s + Number(h.value), 0) / historical.length) : 0;
+    const avgPred = (predicted && predicted.length) ? (predicted.reduce((s,p) => s + Number(p.value), 0) / predicted.length) : 0;
+    const pctChange = avgHist ? (((avgPred - avgHist) / Math.max(1, avgHist)) * 100).toFixed(1) : 'N/A';
+    const highest = predicted && predicted.length ? predicted.reduce((a,b) => a.value > b.value ? a : b) : null;
+    const lowest = predicted && predicted.length ? predicted.reduce((a,b) => a.value < b.value ? a : b) : null;
+
+    const items = [
+        { icon: 'fas fa-chart-line', text: `Avg historical: ${Math.round(avgHist)}` },
+        { icon: 'fas fa-calendar-alt', text: `Avg predicted (7d): ${Math.round(avgPred)} (${pctChange}% vs history)` },
+    ];
+    if (highest) items.push({ icon: 'fas fa-arrow-up', text: `Peak predicted: ${highest.value} on ${new Date(highest.date).toLocaleDateString()}` });
+    if (lowest) items.push({ icon: 'fas fa-arrow-down', text: `Lowest predicted: ${lowest.value} on ${new Date(lowest.date).toLocaleDateString()}` });
+
+    items.forEach(it => {
+        const li = document.createElement('li');
+        li.innerHTML = `<i class="${it.icon}"></i><span>${it.text}</span>`;
+        container.appendChild(li);
+    });
+}
+
+// Small wrapper used by the UI path when no backend file is present
+// (predictNext7DaysFrontend -> clientSidePredict uses these)
+function runClientSidePredictionFlow() {
+    if (!salesData || salesData.length < 3) {
+        showNotification('Please upload at least 3 days of data (or use sample)', 'error');
+        return;
+    }
+    const smoothing = Math.max(0, Number(document.getElementById('smoothing')?.value || 3));
+    const hist = salesData; // salesData is already daily-normalized via setupPredictionUI
+    const preds = generate7DayPrediction(hist, smoothing);
+    updatePredictionChartFromData(hist, preds);
+    updatePredictionInsightsFromPrediction(hist, preds);
+    showNotification('7-day prediction complete (client-side)', 'success');
+}
+
+// Hook into existing client-side predict entrypoint
+// If you already call clientSidePredict() elsewhere, leave that; otherwise ensure
+// predictNext7DaysFrontend() calls uploadAndForecastBackend() or falls back to this wrapper.
+try {
+    // If clientSidePredict exists in the file, override to call the new wrapper for consistency.
+    if (typeof clientSidePredict === 'function') {
+        const _origClientSide = clientSidePredict;
+        clientSidePredict = function() {
+            try { runClientSidePredictionFlow(); } catch (e) { console.error(e); _origClientSide(); }
+        };
+    }
+} catch (e) {
+    // ignore if clientSidePredict isn't defined yet
+}
+
 // CSV Handling and Prediction Functions
 // Simple CSV parser (lightweight)
 function parseCSV(text) {
@@ -1190,19 +1362,6 @@ async function predictNext7DaysFrontend() {
 
     // if no uploaded file, use client-side predictor
     clientSidePredict();
-}
-
-function clientSidePredict() {
-    if (!salesData || salesData.length < 3) {
-        showNotification('Please upload at least 3 days of data (or use sample)', 'error');
-        return;
-    }
-    const smoothingDays = Math.max(0, Number(document.getElementById('smoothing')?.value || 3));
-    const aggregated = salesData.slice(); // already daily
-    const predictions = generate7DayPrediction(aggregated, smoothingDays);
-    updatePredictionChartFromData(aggregated, predictions);
-    updatePredictionInsightsFromPrediction(aggregated, predictions);
-    showNotification('7-day prediction complete (client-side)', 'success');
 }
 
 // Upload file to backend Node API which proxies to forecasting service
