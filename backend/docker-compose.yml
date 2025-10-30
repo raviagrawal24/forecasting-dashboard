@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  forecast:
+    build:
+      context: ./forecast
+    container_name: forecasting_forecast
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+    container_name: forecasting_api
+    ports:
+      - "4000:4000"
+    depends_on:
+      forecast:
+        condition: service_healthy
+    environment:
+      - FORECAST_URL=http://forecast:8000/forecast
+    restart: unless-stopped

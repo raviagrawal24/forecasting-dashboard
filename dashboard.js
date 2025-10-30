@@ -20,6 +20,7 @@ let predictionChart = null;
 // Prediction / CSV Upload state
 let salesData = []; // [{date: Date, value: Number}]
 let uploadedFilename = null;
+let uploadedFile = null; // <-- new: keep the File object for backend upload
 
 // Sample Data
 const sampleStockData = [
@@ -1001,6 +1002,7 @@ function setupPredictionUI() {
     if (fileInput) {
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
+            uploadedFile = file || null;            // store for backend upload
             if (!file) return;
             uploadedFilename = file.name;
             const reader = new FileReader();
@@ -1033,28 +1035,24 @@ function setupPredictionUI() {
     }
 }
 
-// Convert parsed rows to daily aggregated series [{date: Date, value: Number}]
-function normalizeRowsToDaily(rows) {
-    // Accept flexible headers: date, sold, quantity, value
-    const map = new Map(); // key = yyyy-mm-dd, value = sum
-    rows.forEach(r => {
-        const dateStr = r.date || r.dt || r.day;
-        if (!dateStr) return;
-        const date = new Date(dateStr);
-        if (isNaN(date)) return;
-        const key = date.toISOString().slice(0, 10);
-        // find value field
-        const v = Number(r.sold ?? r.quantity ?? r.value ?? r.qty ?? 0) || 0;
-        map.set(key, (map.get(key) || 0) + v);
-    });
-    const arr = Array.from(map.entries()).map(([d, v]) => ({ date: new Date(d), value: v }));
-    // sort ascending
-    arr.sort((a, b) => a.date - b.date);
-    return arr;
+// Predict next 7 days using backend if file uploaded; otherwise client-side fallback
+async function predictNext7DaysFrontend() {
+    if (uploadedFile) {
+        try {
+            await uploadAndForecastBackend(uploadedFile);
+        } catch (err) {
+            console.error('Backend forecast failed, falling back to client-side', err);
+            // fallback to existing client-side predictor
+            clientSidePredict();
+        }
+        return;
+    }
+
+    // if no uploaded file, use client-side predictor
+    clientSidePredict();
 }
 
-// Predict next 7 days using linear trend + moving average smoothing
-function predictNext7DaysFrontend() {
+function clientSidePredict() {
     if (!salesData || salesData.length < 3) {
         showNotification('Please upload at least 3 days of data (or use sample)', 'error');
         return;
@@ -1064,168 +1062,68 @@ function predictNext7DaysFrontend() {
     const predictions = generate7DayPrediction(aggregated, smoothingDays);
     updatePredictionChartFromData(aggregated, predictions);
     updatePredictionInsightsFromPrediction(aggregated, predictions);
-    showNotification('7-day prediction complete', 'success');
+    showNotification('7-day prediction complete (client-side)', 'success');
 }
 
-// Clear uploaded data
-function clearUploadedData() {
-    salesData = [];
-    uploadedFilename = null;
-    if (predictionChart) {
-        predictionChart.destroy();
-        predictionChart = null;
-    }
-    document.getElementById('csvFile').value = '';
-    document.getElementById('predictionInsights').innerHTML = '';
-    showNotification('Uploaded data cleared', 'info');
-}
+// Upload file to backend Node API which proxies to forecasting service
+async function uploadAndForecastBackend(file) {
+    showNotification('Sending data to forecast service...', 'info');
+    const form = new FormData();
+    form.append('file', file);
+    form.append('period', '7');
+    form.append('interval', '0.9');
 
-// Generate predictions: returns array [{date: Date, value: Number, confidence: Number}]
-function generate7DayPrediction(series, smoothingDays = 3) {
-    // Convert to values and days index
-    const values = series.map(s => s.value);
-    const n = values.length;
-    const x = Array.from({ length: n }, (_, i) => i + 1);
-
-    // Linear regression slope & intercept
-    const sumX = x.reduce((a, b) => a + b, 0);
-    const sumY = values.reduce((a, b) => a + b, 0);
-    const sumXY = x.reduce((a, b, i) => a + b * values[i], 0);
-    const sumXX = x.reduce((a, b) => a + b * b, 0);
-    const denom = (n * sumXX - sumX * sumX) || 1;
-    const slope = (n * sumXY - sumX * sumY) / denom;
-    const intercept = (sumY - slope * sumX) / n;
-
-    // smoothing: simple moving average of last smoothingDays
-    let lastValue = values[n - 1];
-    if (smoothingDays > 1 && n >= smoothingDays) {
-        const window = values.slice(n - smoothingDays);
-        lastValue = window.reduce((a, b) => a + b, 0) / window.length;
-    }
-
-    // residuals to compute confidence
-    const predsFit = x.map(xi => intercept + slope * xi);
-    const residuals = values.map((v, i) => v - predsFit[i]);
-    const variance = residuals.reduce((a, b) => a + b * b, 0) / Math.max(1, n - 1);
-    const stdev = Math.sqrt(variance);
-
-    // produce next 7 days
-    const out = [];
-    for (let i = 1; i <= 7; i++) {
-        const dayIndex = n + i;
-        // base predicted by linear trend
-        let pred = intercept + slope * dayIndex;
-        // blend with lastValue to reduce extreme jumps
-        pred = pred * 0.6 + lastValue * 0.4;
-        pred = Math.max(0, pred);
-        // compute confidence from stdev relative to mean
-        const mean = Math.max(1, Math.abs(sumY / n));
-        const conf = Math.max(10, Math.min(99, 100 - (stdev / mean) * 100)); // 10-99
-        const date = new Date(series[n - 1].date);
-        date.setDate(date.getDate() + i);
-        out.push({ date, value: Number(pred.toFixed(2)), confidence: Number(conf.toFixed(1)) });
-    }
-    return out;
-}
-
-// Update chart: show historical + predicted
-function updatePredictionChartFromData(historical, predicted) {
-    const ctx = document.getElementById('predictionChart').getContext('2d');
-    const histLabels = historical.map(h => h.date.toISOString().slice(0, 10));
-    const histValues = historical.map(h => h.value);
-    const predLabels = predicted.map(p => p.date.toISOString().slice(0, 10));
-    const predValues = predicted.map(p => p.value);
-
-    if (predictionChart) predictionChart.destroy();
-
-    predictionChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [...histLabels, ...predLabels],
-            datasets: [
-                {
-                    label: 'Historical',
-                    data: [...histValues, ...Array(predValues.length).fill(null)],
-                    borderColor: '#4C51BF',
-                    backgroundColor: 'rgba(76,81,191,0.08)',
-                    fill: true,
-                    tension: 0.2,
-                    pointRadius: 3
-                },
-                {
-                    label: 'Predicted (7d)',
-                    data: [...Array(histValues.length).fill(null), ...predValues],
-                    borderColor: '#ED8936',
-                    backgroundColor: 'rgba(237,137,54,0.06)',
-                    borderDash: [6, 4],
-                    fill: true,
-                    tension: 0.2,
-                    pointRadius: 4
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom' },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false
-                }
-            },
-            interaction: { mode: 'nearest', intersect: false },
-            scales: {
-                x: {
-                    ticks: { color: currentTheme === 'dark' ? '#E2E8F0' : '#2D3748' }
-                },
-                y: {
-                    beginAtZero: true,
-                    ticks: { color: currentTheme === 'dark' ? '#E2E8F0' : '#2D3748' }
-                }
-            }
-        }
+    const resp = await fetch('http://localhost:4000/api/forecast', {
+        method: 'POST',
+        body: form
     });
-}
 
-// Populate insights
-function updatePredictionInsightsFromPrediction(historical, predicted) {
-    const insights = document.getElementById('predictionInsights');
-    const lastHist = historical[historical.length - 1];
-    const avgPred = predicted.reduce((a, b) => a + b.value, 0) / predicted.length;
-    const totalNext7 = predicted.reduce((a, b) => a + b.value, 0);
-    const direction = avgPred > lastHist.value ? 'upward' : (avgPred < lastHist.value ? 'downward' : 'flat');
-    const avgConfidence = predicted.reduce((a, b) => a + b.confidence, 0) / predicted.length;
-
-    const lowAlerts = predicted.filter(p => p.value < 5).length; // example threshold
-    insights.innerHTML = `
-        <li><i class="fas fa-chart-line"></i> Trend: ${direction}</li>
-        <li><i class="fas fa-percentage"></i> Avg confidence: ${avgConfidence.toFixed(1)}%</li>
-        <li><i class="fas fa-calendar-day"></i> Expected total (next 7 days): ${Math.round(totalNext7)}</li>
-        <li><i class="fas fa-bell"></i> Low forecast alerts: ${lowAlerts > 0 ? lowAlerts + ' day(s)' : 'None'}</li>
-    `;
-}
-
-// Convenience: use built-in sample data (aggregated from sample stockData)
-function useSampleData() {
-    // create a small synthetic sales series from stockData quantities over recent dates
-    const today = new Date();
-    const rows = [];
-    for (let i = 7; i >= 1; i--) {
-        const d = new Date(today);
-        d.setDate(today.getDate() - i);
-        const val = Math.max(5, Math.round(Math.random() * 30));
-        rows.push({ date: d, value: val });
+    const json = await resp.json();
+    if (!resp.ok) {
+        const msg = json?.detail || json?.error || 'Forecast service error';
+        showNotification('Forecast failed: ' + msg, 'error');
+        throw new Error(msg);
     }
-    salesData = rows;
-    updatePredictionChartFromData(salesData, []);
-    showNotification('Sample data loaded', 'success');
+
+    // process server response and update chart + insights
+    processServerForecastResponse(json);
+    showNotification('7-day prediction ready (server)', 'success');
+}
+
+// Convert server JSON to the formats expected by chart & insights functions
+function processServerForecastResponse(json) {
+    // historical: [{date: 'YYYY-MM-DD', y: number}]
+    // predictions: [{date, yhat, yhat_lower, yhat_upper}]
+    const historical = (json.historical || []).map(h => ({ date: new Date(h.date), value: h.y }));
+    const predicted = (json.predictions || []).map(p => {
+        const value = Number(p.yhat);
+        // derive a simple confidence from interval width
+        const width = Math.abs(Number(p.yhat_upper) - Number(p.yhat_lower));
+        const rel = Math.min(1, Math.abs(width) / Math.max(1, Math.abs(value)));
+        const confidence = Math.max(10, Math.min(99, Math.round((1 - rel) * 100)));
+        return {
+            date: new Date(p.date),
+            value: Number(value.toFixed(2)),
+            lower: Number(p.yhat_lower),
+            upper: Number(p.yhat_upper),
+            confidence
+        };
+    });
+
+    // update chart: updatePredictionChartFromData expects arrays of {date, value}
+    updatePredictionChartFromData(
+        historical.map(h => ({ date: h.date, value: h.value })),
+        predicted.map(p => ({ date: p.date, value: p.value })) // chart uses .value
+    );
+
+    // update insights from server-derived predicted array
+    updatePredictionInsightsFromPrediction(historical, predicted);
 }
 
 // Initialize prediction UI on DOM ready (call this from your existing DOMContentLoaded setup)
 document.addEventListener('DOMContentLoaded', function() {
     // ...existing code...
-    try { setupPredictionUI(); } catch (e) { /* ignore in older builds */ }
+    try { setupPredictionUI(); } catch (e) {}
 });
 
 // Activity Log Functions
