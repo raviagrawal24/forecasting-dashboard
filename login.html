@@ -8,6 +8,9 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- then your existing app script -->
+    <script src="dashboard.js"></script>
 </head>
 <body>
     <!-- Login Screen -->
@@ -408,6 +411,31 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Forecast History -->
+                <div class="dashboard-card forecast-history">
+                    <div class="card-header">
+                        <h3><i class="fas fa-history"></i> Forecast History</h3>
+                        <div class="card-actions">
+                            <button onclick="refreshHistory()" class="refresh-btn">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="history-filters">
+                            <select id="historyPeriod">
+                                <option value="7">Last 7 days</option>
+                                <option value="30">Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                            </select>
+                            <input type="text" id="historySearch" placeholder="Search forecasts...">
+                        </div>
+                        <div class="history-list" id="forecastHistory">
+                            <!-- Populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -419,7 +447,6 @@
             <div id="modalBody"></div>
         </div>
     </div>
-
     <script src="dashboard.js"></script>
 </body>
 </html>

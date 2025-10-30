@@ -61,3 +61,108 @@ app.use('/', express.static(path.join(__dirname, '..')));
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`API listening on http://0.0.0.0:${PORT}`));
+
+// Add these endpoints after your existing routes
+
+// Get forecast history with filters
+app.get('/api/forecasts', async (req, res) => {
+    try {
+        const days = parseInt(req.query.days || '7');
+        const search = req.query.search || '';
+        const page = parseInt(req.query.page || '1');
+        const limit = parseInt(req.query.limit || '10');
+
+        const query = {
+            uploadedAt: { 
+                $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) 
+            }
+        };
+
+        if (search) {
+            query.$or = [
+                { filename: new RegExp(search, 'i') },
+                { 'metadata.model': new RegExp(search, 'i') }
+            ];
+        }
+
+        const forecasts = await Forecast
+            .find(query)
+            .sort({ uploadedAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .select('filename uploadedAt predictions historical metadata');
+
+        const total = await Forecast.countDocuments(query);
+
+        res.json({
+            forecasts,
+            pagination: {
+                total,
+                pages: Math.ceil(total / limit),
+                current: page,
+                limit
+            }
+        });
+    } catch (error) {
+        console.error('Forecast history error:', error);
+        res.status(500).json({ error: 'Failed to fetch forecasts' });
+    }
+});
+
+// Get single forecast by ID with analysis
+app.get('/api/forecasts/:id', async (req, res) => {
+    try {
+        const forecast = await Forecast.findById(req.params.id);
+        if (!forecast) {
+            return res.status(404).json({ error: 'Forecast not found' });
+        }
+
+        // Calculate accuracy metrics
+        const metrics = calculateForecastMetrics(forecast);
+
+        res.json({
+            ...forecast.toObject(),
+            metrics
+        });
+    } catch (error) {
+        console.error('Forecast detail error:', error);
+        res.status(500).json({ error: 'Failed to fetch forecast' });
+    }
+});
+
+// Helper function for accuracy metrics
+function calculateForecastMetrics(forecast) {
+    const now = new Date();
+    const completedPredictions = forecast.predictions
+        .filter(p => new Date(p.date) < now);
+
+    const metrics = {
+        mape: 0,
+        rmse: 0,
+        completed: completedPredictions.length,
+        total: forecast.predictions.length
+    };
+
+    if (completedPredictions.length > 0) {
+        let sumError = 0;
+        let sumSquaredError = 0;
+
+        completedPredictions.forEach(pred => {
+            const actual = forecast.historical.find(h => 
+                new Date(h.date).toDateString() === new Date(pred.date).toDateString()
+            )?.value;
+
+            if (actual) {
+                const error = Math.abs((actual - pred.value) / actual);
+                const squaredError = Math.pow(actual - pred.value, 2);
+                sumError += error;
+                sumSquaredError += squaredError;
+            }
+        });
+
+        metrics.mape = (sumError / completedPredictions.length) * 100;
+        metrics.rmse = Math.sqrt(sumSquaredError / completedPredictions.length);
+    }
+
+    return metrics;
+}

@@ -1897,7 +1897,75 @@ body {
     animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+.forecast-history {
+    grid-column: span 2;
+}
+
+.history-filters {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.history-filters select,
+.history-filters input {
+    padding: 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.history-item:hover {
+    background: #f1f5f9;
+    cursor: pointer;
+}
+
+.history-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.history-meta .filename {
+    font-weight: 500;
+}
+
+.history-meta .timestamp {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.history-stats {
+    display: flex;
+    gap: 16px;
+}
+
+.history-stat {
+    text-align: right;
+}
+
+.history-stat .label {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.history-stat .value {
+    font-weight: 500;
 }

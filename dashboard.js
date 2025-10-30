@@ -66,6 +66,8 @@ document.addEventListener('DOMContentLoaded', function() {
             localStorage.removeItem('inventorySession');
         }
     }
+
+    // Firebase removed: no auth or realtime listeners here
 });
 
 // Enhanced Login Functions
@@ -1085,13 +1087,13 @@ async function uploadAndForecastBackend(file) {
         throw new Error(msg);
     }
 
-    // process server response and update chart + insights
-    processServerForecastResponse(json);
+    // await processing (function is now async)
+    await processServerForecastResponse(json);
     showNotification('7-day prediction ready (server)', 'success');
 }
 
 // Convert server JSON to the formats expected by chart & insights functions
-function processServerForecastResponse(json) {
+async function processServerForecastResponse(json) {
     // historical: [{date: 'YYYY-MM-DD', y: number}]
     // predictions: [{date, yhat, yhat_lower, yhat_upper}]
     const historical = (json.historical || []).map(h => ({ date: new Date(h.date), value: h.y }));
@@ -1515,3 +1517,108 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// Add these functions after your existing code
+
+async function loadForecastHistory(days = 7, search = '') {
+    try {
+        const response = await fetch(`http://localhost:4000/api/forecasts?days=${days}&search=${search}`);
+        if (!response.ok) throw new Error('Failed to load history');
+        
+        const forecasts = await response.json();
+        updateHistoryUI(forecasts);
+    } catch (error) {
+        console.error('History load error:', error);
+        showNotification('Failed to load forecast history', 'error');
+    }
+}
+
+function updateHistoryUI(forecasts) {
+    const container = document.getElementById('forecastHistory');
+    if (!container) return;
+
+    // support API returning { forecasts: [...], pagination: {...} } or an array
+    const list = Array.isArray(forecasts) ? forecasts : (forecasts?.forecasts || forecasts || []);
+
+    container.innerHTML = list.map(f => `
+        <div class="history-item" onclick="loadHistoricalForecast('${f._id || f.id}')">
+            <div class="history-meta">
+                <div class="filename">${f.filename || f.name || 'forecast'}</div>
+                <div class="timestamp">${new Date(f.uploadedAt || f.createdAt || Date.now()).toLocaleDateString()}</div>
+            </div>
+            <div class="history-stats">
+                <div class="history-stat">
+                    <div class="label">Accuracy</div>
+                    <div class="value">${calculateAccuracy(f)}%</div>
+                </div>
+                <div class="history-stat">
+                    <div class="label">Predictions</div>
+                    <div class="value">${(f.predictions || []).length}</div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function calculateAccuracy(forecast) {
+    // Simple MAPE calculation for completed predictions
+    const now = new Date();
+    const actualPreds = forecast.predictions.filter(p => new Date(p.date) < now);
+    if (!actualPreds.length) return 'N/A';
+
+    const mape = actualPreds.reduce((sum, p) => {
+        const actual = forecast.historical.find(h => 
+            new Date(h.date).toDateString() === new Date(p.date).toDateString()
+        )?.value;
+        if (!actual) return sum;
+        return sum + Math.abs((actual - p.value) / actual);
+    }, 0) / actualPreds.length;
+
+    return (100 - mape * 100).toFixed(1);
+}
+
+async function loadHistoricalForecast(id) {
+    try {
+        const response = await fetch(`http://localhost:4000/api/forecasts/${id}`);
+        if (!response.ok) throw new Error('Failed to load forecast');
+        
+        const forecast = await response.json();
+        updatePredictionChartFromData(
+            forecast.historical.map(h => ({ date: new Date(h.date), value: h.value })),
+            forecast.predictions.map(p => ({
+                date: new Date(p.date),
+                value: p.value,
+                lower: p.lower,
+                upper: p.upper
+            }))
+        );
+        showNotification('Historical forecast loaded', 'success');
+    } catch (error) {
+        console.error('Load historical error:', error);
+        showNotification('Failed to load historical forecast', 'error');
+    }
+}
+
+// Add event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // ...existing code...
+
+    // Set up history filters
+    const historyPeriod = document.getElementById('historyPeriod');
+    const historySearch = document.getElementById('historySearch');
+
+    if (historyPeriod) {
+        historyPeriod.addEventListener('change', () => {
+            loadForecastHistory(historyPeriod.value, historySearch.value);
+        });
+    }
+
+    if (historySearch) {
+        historySearch.addEventListener('input', debounce(() => {
+            loadForecastHistory(historyPeriod.value, historySearch.value);
+        }, 300));
+    }
+
+    // Initial history load
+    loadForecastHistory();
+});

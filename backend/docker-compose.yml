@@ -25,3 +25,20 @@ services:
     environment:
       - FORECAST_URL=http://forecast:8000/forecast
     restart: unless-stopped
+
+  mongodb:
+    image: mongo:latest
+    container_name: forecasting_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
