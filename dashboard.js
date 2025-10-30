@@ -15,6 +15,7 @@ let sessionTimeout = 30 * 60 * 1000; // 30 minutes
 let userActivity = [];
 let isPasswordVisible = false;
 let currentTheme = 'light';
+let predictionChart = null;
 
 // Sample Data
 const sampleStockData = [
@@ -44,6 +45,7 @@ document.addEventListener('DOMContentLoaded', function() {
     generateSecurityCode();
     initializeSessionTimeout();
     initializeTheme();
+    initializePredictions();
     
     // Check for existing session
     const savedSession = localStorage.getItem('inventorySession');
@@ -899,6 +901,110 @@ function showAIPrediction() {
         <small style='color:#888;'>* This is a demo AI prediction. Integrate your ML backend for real data.</small>
     `;
 }
+
+function initializePredictions() {
+    // Set up event listeners for prediction tabs
+    document.querySelectorAll('.prediction-tabs .tab-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            e.target.classList.add('active');
+            updatePredictions(e.target.dataset.period);
+        });
+    });
+    
+    // Initial prediction load
+    updatePredictions('weekly');
+}
+
+function updatePredictions(period) {
+    // Simulate AI predictions
+    const predictions = generatePredictions(period);
+    updatePredictionChart(predictions);
+    updatePredictionInsights(predictions);
+}
+
+function generatePredictions(period) {
+    // Simulate AI prediction data
+    const labels = period === 'weekly' 
+        ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        : ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+    
+    const currentData = stockData.map(item => item.quantity);
+    const average = currentData.reduce((a, b) => a + b, 0) / currentData.length;
+    
+    return {
+        labels: labels,
+        predicted: labels.map(() => average + (Math.random() - 0.5) * 20),
+        confidence: labels.map(() => 70 + Math.random() * 20)
+    };
+}
+
+function updatePredictionChart(predictions) {
+    const ctx = document.getElementById('predictionChart').getContext('2d');
+    
+    if (predictionChart) {
+        predictionChart.destroy();
+    }
+    
+    predictionChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: predictions.labels,
+            datasets: [{
+                label: 'Predicted Stock Level',
+                data: predictions.predicted,
+                borderColor: '#4C51BF',
+                backgroundColor: 'rgba(76, 81, 191, 0.1)',
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+function updatePredictionInsights(predictions) {
+    const insights = document.getElementById('predictionInsights');
+    const avgConfidence = predictions.confidence.reduce((a, b) => a + b, 0) / predictions.confidence.length;
+    const trend = predictions.predicted[predictions.predicted.length - 1] > predictions.predicted[0] ? 'upward' : 'downward';
+    
+    insights.innerHTML = `
+        <li><i class="fas fa-chart-line"></i> ${trend.charAt(0).toUpperCase() + trend.slice(1)} trend detected</li>
+        <li><i class="fas fa-percentage"></i> Average confidence: ${avgConfidence.toFixed(1)}%</li>
+        <li><i class="fas fa-exclamation-triangle"></i> Potential stock alerts: ${getPotentialAlerts(predictions)}</li>
+    `;
+}
+
+function getPotentialAlerts(predictions) {
+    const lowStockThreshold = 20;
+    const alertDays = predictions.predicted.filter(val => val < lowStockThreshold).length;
+    return alertDays > 0 ? `${alertDays} days may require attention` : 'None detected';
+}
+
+function refreshPredictions() {
+    const activeTab = document.querySelector('.tab-btn.active');
+    updatePredictions(activeTab.dataset.period);
+    showNotification('Predictions refreshed', 'success');
+}
+
+// Add this to your DOMContentLoaded event listener
+document.addEventListener('DOMContentLoaded', function() {
+    // ...existing code...
+    initializePredictions();
+});
+
 
 // Activity Log Functions
 function loadActivityLog() {

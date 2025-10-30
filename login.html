@@ -268,14 +268,29 @@
                 <!-- Daily Stock Entry -->
                 <div class="dashboard-card ai-forecasting">
                     <div class="card-header">
-                        <h2><i class="fas fa-brain"></i> AI Demand Forecasting</h2>
+                        <h3><i class="fas fa-brain"></i> AI Stock Predictions</h3>
+                        <div class="card-actions">
+                            <button onclick="refreshPredictions()" class="refresh-btn">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="card-content">
-                        <p>
-                            Utilize our AI-powered demand forecasting model to predict future stock levels and optimize your supply chain decisions.
-                        </p>
-                        <button class="ai-forecast-btn" onclick="showAIPrediction()">Show Demand Forecast</button>
-                        <div id="aiPredictionResult" style="margin-top:15px;"></div>
+                        <div class="prediction-tabs">
+                            <button class="tab-btn active" data-period="weekly">Weekly</button>
+                            <button class="tab-btn" data-period="monthly">Monthly</button>
+                        </div>
+                        <div class="prediction-content">
+                            <div class="prediction-chart">
+                                <canvas id="predictionChart"></canvas>
+                            </div>
+                            <div class="prediction-insights">
+                                <h4>Key Insights</h4>
+                                <ul id="predictionInsights">
+                                    <!-- Insights will be populated by JavaScript -->
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
